@@ -1,4 +1,306 @@
 
+# NEO SU / SUDO Audit Automation (VBA)
+
+## Overview
+
+This VBA macro automates **security auditing of `su` / `sudo` operations** on  
+**Linux and AIX systems** by correlating:
+
+- Syslog entries
+- Script execution logs
+- System configuration parameters
+
+It produces **Excel-based audit evidence** and **CSV output** suitable for
+compliance, SOC review, and operational audits.
+
+---
+
+## 1. Purpose
+
+The macro is designed to answer the following audit questions:
+
+- Who executed `su` / `sudo`?
+- When did it happen?
+- From which terminal (PTS / TTY)?
+- Was the action associated with a valid script execution?
+- What is the management (Kanri) number for the session?
+- Are there suspicious, missing, or excluded events?
+
+---
+
+## 2. Inputs
+
+### 2.1 Parameter Sheet (Excel)
+
+**Sheet name:** `Param_Sheet_last_su`  
+This sheet controls the entire execution.
+
+| Column | Description |
+|------|-------------|
+| A | System / Host name |
+| B | Control flag (`Y` = process, others = skip) |
+| D | Base log directory path |
+| E | Subdirectory path |
+| H | OS type (`LINUX` or `AIX`) |
+| J | Syslog filename |
+
+📌 If this sheet is incorrect, the macro will not work correctly.
+
+---
+
+### 2.2 Syslog File (Linux / AIX)
+
+**Location**
+```
+In_Path1 + In_Path2 + In_File_name_syslog
+```
+
+
+**Purpose**
+- Detects `su` / `sudo` activity
+- Extracts timestamp, user, terminal
+- Filters noise (session close, PAM noise, authentication ignores)
+
+**Examples**
+- Linux: `/var/log/messages`
+- AIX: `/var/adm/ras/syslog`
+
+---
+
+### 2.3 Script Log Files
+
+**Location**
+```
+In_Path1 + In_Path2
+
+```
+
+
+**Expected filename pattern**
+<any><account><any><starttime><kanriNo>_<any>
+
+
+**Used to extract**
+- Account name
+- Script start time
+- Script end time (from file timestamp)
+- Management number (Kanri No)
+- Script file name
+
+📌 These files provide **context and accountability** for SU events.
+
+---
+
+## 3. Processing Flow
+
+### High-level execution flow
+
+```
+Param_Sheet_last_su
+↓
+Syslog file (Linux / AIX)
+↓
+Noise filtering & parsing
+↓
+Script log correlation
+↓
+NEO_Work_Sheet (Excel)
+↓
+NEO_Work_Csv (Excel)
+↓
+NEOsu_MMDD_accounted.csv
+↓
+SU_Count summary
+```
+
+
+
+---
+
+## 4. Core Modules
+
+### 4.1 `NEO_Accounted`
+**Main controller**
+
+- Reads parameter sheet
+- Determines OS type
+- Initializes global variables
+- Calls:
+  - `Sec_Script_Spool`
+  - `Sec_Linux_Main` or `Sec_AIX_Main`
+
+---
+
+### 4.2 `Sec_Linux_Main`
+**Linux syslog parser**
+
+- Opens syslog file
+- Extracts:
+  - Date / time
+  - User before and after `su`
+  - PTS / TTY
+- Filters noise logs
+- Writes valid SU events to `NEO_Work_Sheet`
+
+---
+
+### 4.3 `Sec_AIX_Main`
+**AIX syslog parser**
+
+- Parses AIX-specific log format
+- Detects `su` / `sudo`
+- Extracts user and timestamp
+- Writes audit rows to `NEO_Work_Sheet`
+
+---
+
+### 4.4 `Sec_Script_Spool`
+**Script log metadata loader**
+
+- Scans script log directory
+- Extracts metadata from filenames
+- Populates global arrays used for correlation
+
+---
+
+### 4.5 `Sec_Get_Kanri_no`
+**Script correlation logic**
+
+- Matches syslog timestamp with script execution window
+- Resolves:
+  - Kanri number
+  - Script file name
+- Links SU event to a managed session
+
+---
+
+### 4.6 `Write_CSV`
+**CSV output generator**
+
+- Reads `NEO_Work_Csv`
+- Produces final audit CSV file
+
+---
+
+## 5. Outputs
+
+### 5.1 Excel: `NEO_Work_Sheet`
+**Primary audit evidence**
+
+Each row represents one SU / SUDO event.
+
+Typical fields:
+- Event type (`NEO_SU`)
+- Date
+- Time
+- Terminal (PTS)
+- User transition
+- Kanri number
+- Script filename
+
+---
+
+### 5.2 Excel: `NEO_Work_Csv`
+**CSV staging area**
+
+- Intermediate worksheet
+- Not intended for direct user review
+
+---
+
+### 5.3 CSV File (Final Deliverable)
+
+**Filename format**
+```
+NEOsu_<MMDD>_accounted.csv
+```
+
+
+
+**Purpose**
+- Compliance submission
+- SOC review
+- External audit evidence
+
+---
+
+### 5.4 Excel: `SU_Count`
+**Summary report**
+
+- SU count per system
+- Categorized counts (normal, excluded, unknown, error)
+- Visual grouping using system colors
+
+---
+
+## 6. Error Handling & Validation
+
+- Warns if syslog has insufficient valid entries
+- Skips excluded noise logs automatically
+- Handles missing script correlation gracefully
+- Prevents screen flicker using `ScreenUpdating = False`
+
+---
+
+## 7. Intended Use Cases
+
+- Security audits
+- Compliance reporting
+- Privileged access reviews
+- Incident investigation
+- SRE / Infra governance
+
+---
+
+## 8. Limitations
+
+- Filename formats are assumed
+- Global variables are heavily used
+- Excel VBA performance limits apply for very large logs
+- Linux and AIX log formats must match expected patterns
+
+---
+
+## 9. Future Improvements (Recommended)
+
+- Replace global arrays with structured objects
+- Add log format validation
+- Modularize OS-specific logic
+- Export JSON in addition to CSV
+- Improve error logging
+
+---
+
+## 10. Summary
+
+This macro provides an **end-to-end, auditable trail** of privileged access by:
+
+- Parsing OS-level logs
+- Correlating script executions
+- Producing human-readable and machine-readable outputs
+
+It is suitable for **enterprise security operations and compliance workflows**.
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## 1️⃣ Param_Sheet_last_su (Excel control sheet)
 ### 📥 Input source: 
