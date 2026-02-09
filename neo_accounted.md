@@ -1,3 +1,212 @@
+
+
+## 1️⃣ Param_Sheet_last_su (Excel control sheet)
+### 📥 Input source: 
+- Sheet: Param_Sheet_last_su
+
+### 📌 Code where it is read (NEO_Accounted)
+
+### 🧠 How it controls execution
+
+
+| Column     | Effect in code                             |
+| ---------- | ------------------------------------------ |
+| A (System) | Used in output & summary                   |
+| B (Y/N)    | Skips system if not `Y`                    |
+| D + E      | Build file paths                           |
+| H          | Chooses `Sec_Linux_Main` or `Sec_AIX_Main` |
+| J          | Decides which syslog file to open          |
+
+
+## 2️⃣ Syslog file (Linux / AIX)
+### 📥 Input source
+```
+In_Path1 + In_Path2 + In_File_name_syslog
+```
+
+
+### 📌 Where it is opened
+```
+
+Linux:
+Workbooks.Open Filename:=In_Path1 & In_Path2 & In_File_name_syslog, ReadOnly:=True
+' #comment: Opens Linux syslog file
+
+
+AIX:
+
+Workbooks.Open Filename:=In_Path1 & In_Path2 & In_File_name_syslog, ReadOnly:=True
+' #comment: Opens AIX syslog file
+```
+
+### 📌 What is extracted from syslog
+```
+ 1. Timestamp
+
+Edit_Date_Log = Left(ActiveCell.Offset(i, 0), 16)
+' #comment: Extracts datetime from log line
+
+Used to generate:
+
+Edit_Date_Log_mmdd = Format(Edit_Date_Log, "mmdd")
+Edit_Date_Log_hhmmss = Format(Edit_Date_Log, "hh:mm:ss")
+```
+
+### 2. User information    
+```
+Wk_Column = InStr(ActiveCell, "USER=")
+Wk_User = Tmp_Str1(0)
+
+Wk_Column = InStr(ActiveCell, "sudo:")
+Wk_User = Tmp_Str1(0)
+```
+
+### 📌 Extracts:
+- user before su
+- user after su
+
+### 3. PTS / TTY
+
+```
+Wk_Column = InStr(ActiveCell, "pts/")
+Wk_Pts1 = "pts/" & Tmp_Str1(0)
+
+
+Fallback:
+
+If InStr(ActiveCell, "TTY=unknown") Then
+    Wk_Pts1 = "unknown"
+End If
+```
+
+### 4. Noise / exclusion detection
+
+```
+If InStr(ActiveCell, "closed") Or InStr(ActiveCell, "by uid") Then
+    ActiveCell.Offset(i, 11) = 1
+End If
+
+
+If InStr(ActiveCell, "pam_vas: Authentication ignored") Then
+    ActiveCell.Offset(i, 11) = 1
+End If
+```
+
+### 📌 These lines do not become output records.
+
+
+
+
+
+## 3️⃣ Script log files (correlation input)
+### 📥 Input source
+```
+Dir(In_Path1 & In_Path2 & "*")
+```
+
+### 📌 Where they are read
+```
+Sub Sec_Script_Spool()
+```
+
+### 📌 What is extracted
+- From filename:
+```
+Tmp_Script = Split(StrFileName, "_")
+
+```
+- Stored into:
+```
+Script_TBI_Account(Idx)
+Script_TBI_St_Time(Idx)
+Script_TBI_End_Time(Idx)
+Script_TBI_Kanri_No(Idx)
+Script_TBI_Script_File_Name(Idx)
+```
+
+### 📌 Purpose:
+- Match syslog su time with script execution window
+- Resolve Kanri No
+- Resolve script file name
+
+
+
+## 4️⃣ OUTPUT: NEO_Work_Sheet (main audit result)
+### 📤 Where written
+
+- Throughout Linux/AIX parsers:
+```
+ThisWorkbook.Sheets("NEO_Work_Sheet").Cells(Loop_Neo, 1) = "NEO_SU"
+ThisWorkbook.Sheets("NEO_Work_Sheet").Cells(Loop_Neo, 2) = Edit_Date_Log_mmdd
+ThisWorkbook.Sheets("NEO_Work_Sheet").Cells(Loop_Neo, 3) = Edit_Date_Log_hhmmss
+ThisWorkbook.Sheets("NEO_Work_Sheet").Cells(Loop_Neo, 5) = Wk_Pts1
+ThisWorkbook.Sheets("NEO_Work_Sheet").Cells(Loop_Neo, 6) = Wk_User & " → " & Wk_After_su
+ThisWorkbook.Sheets("NEO_Work_Sheet").Cells(Loop_Neo, 8) = Kanri_No
+ThisWorkbook.Sheets("NEO_Work_Sheet").Cells(Loop_Neo, 9) = Script_File_Name
+```
+
+### 📌 This is the canonical audit table.
+
+
+## 5️⃣ OUTPUT: CSV file
+### 📤 File produced
+```
+NEOsu_<MMDD>_accounted.csv
+```
+
+### 📌 Code
+```
+csvFile = In_Path1 & In_Path2 & "NEOsu_" & Edit_Date_Prm & "_accounted.csv"
+Open csvFile For Output As #1
+```
+
+### Written from:
+```
+Sheets("NEO_Work_Csv")
+```
+
+###  📌 This is the compliance / SOC deliverable.
+
+
+## 6️⃣ OUTPUT: SU_Count (summary)
+### 📤 Purpose
+- Per-system aggregation
+- Counts by category
+- Visual reporting
+
+### 📌 Source data
+- Built from NEO_Work_Sheet
+- Uses system color from Param_Sheet_last_su
+
+
+
+
+
+```
+In_System = ThisWorkbook.Sheets("Param_Sheet_last_su").Cells(loop_i, 1)
+' #comment: Reads system/host name
+
+Chk_Ctl = ThisWorkbook.Sheets("Param_Sheet_last_su").Cells(loop_i, 2)
+' #comment: Reads Y/N control flag
+
+In_Path1 = ThisWorkbook.Sheets("Param_Sheet_last_su").Cells(loop_i, 4)
+' #comment: Base directory for logs
+
+In_Path2 = ThisWorkbook.Sheets("Param_Sheet_last_su").Cells(loop_i, 5)
+' #comment: Subdirectory for logs
+
+Chk_OS = UCase(ThisWorkbook.Sheets("Param_Sheet_last_su").Cells(loop_i, 8))
+' #comment: OS type (LINUX / AIX)
+
+In_File_name_syslog = ThisWorkbook.Sheets("Param_Sheet_last_su").Cells(loop_i, 10)
+' #comment: Syslog filename
+```
+
+
+
+
+
+
 ```vba
 Option Explicit
 ' #comment: Forces explicit variable declaration to avoid hidden bugs
