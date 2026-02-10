@@ -1,0 +1,54 @@
+- name: Backup authorized_keys with today's date & add from restriction
+  hosts: all
+  become: true
+  gather_facts: yes                     # required for ansible_date_time
+  vars:
+    ssh_user: vijay
+    home_dir: "/home/{{ ssh_user }}"
+    restriction_ip: '172.29.225.78'
+    auth_keys_file: "{{ home_dir }}/.ssh/authorized_keys"
+    backup_file: "{{ auth_keys_file }}_{{ ansible_date_time.date }}"
+
+  tasks:
+    - name: Ensure .ssh directory exists
+      file:
+        path: "{{ home_dir }}/.ssh"
+        state: directory
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+        mode: '0700'
+
+    - name: Ensure authorized_keys file exists (create if missing)
+      file:
+        path: "{{ auth_keys_file }}"
+        state: touch
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+        mode: '0600'
+
+    - name: Stat authorized_keys
+      stat:
+        path: "{{ auth_keys_file }}"
+      register: auth_keys_stat
+
+    - name: Backup existing authorized_keys with today's date (only if file has content)
+      copy:
+        src: "{{ auth_keys_file }}"
+        dest: "{{ backup_file }}"
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+        mode: '0600'
+      when: auth_keys_stat.stat.exists and auth_keys_stat.stat.size | int > 0
+
+    - name: Add or update from restriction on Ansible key line (match by comment)
+      lineinfile:
+        path: "{{ auth_keys_file }}"
+        create: yes
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+        mode: '0600'
+        # Match an SSH public key line that optionally starts with from="..." then contains key-type, key-data and the comment 'vijay@ANSIBLE'
+        regexp: '^(?:from="[^"]*"\s+)?(ssh-[a-z0-9]+ [A-Za-z0-9+/=]+(?: .*)?vijay@ANSIBLE)$'
+        # Replace the full line with the from="IP" followed by the captured key line
+        line: 'from="{{ restriction_ip }}" \1'
+        backrefs: yes
