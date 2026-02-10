@@ -1,0 +1,14 @@
+sr_data:
+  ITDORASQLQUERY: ""
+  ITDORAHOST: "localhost"        # replace with EC2 public or private IP
+  ITDORAPORT: 1521
+  ITDORASID: "XEPDB1"                  # Oracle XE default pluggable DB
+  ITDORAUSER: "test_user"
+  ITDORAPASS: "Test1234"
+
+  Classification: "ITDRESORA001"
+  ExpectedStart: "now"
+
+  RITM: "RITM0001234"
+  CALLBACKURL: ""   # keep empty to skip callback
+  ORACLE_CONTAINER: "oracle-xe"
