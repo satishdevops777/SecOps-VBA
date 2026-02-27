@@ -1,4 +1,7 @@
 #Final_Macro
+
+## Phase-1 EXTRACTING VALUES
+---
 ```vba
 Option Explicit
 
@@ -241,3 +244,148 @@ Sub WriteToOutput(ws As Worksheet, b As String, s As String, _
 End Sub
 
 ```
+---
+## PHASE-2 UNIX EXCLUSIONS
+
+---
+```vba
+Option Explicit
+
+Sub Phase2_CheckUnixExclusion()
+
+    '=============================
+    ' >>> EDIT ONLY THESE TWO <<<
+    '=============================
+    Dim unixWorkbookName As String
+    Dim unixSheetName As String
+    
+    unixWorkbookName = "UNIX.xlsx"
+    unixSheetName = "UNIX系ダイレクトログイン除外アカウント一覧"
+    '=============================
+
+    Dim wsPhase1 As Worksheet
+    Dim wsUnix As Worksheet
+    Dim wsOutput As Worksheet
+    Dim wbUnix As Workbook
+    
+    Dim lastRow As Long
+    Dim unixLastRow As Long
+    Dim r As Long, uRow As Long
+    
+    Dim business As String
+    Dim server As String
+    Dim username As String
+    Dim fullHost As String
+    Dim baseHost As String
+    Dim exclusionText As String
+    
+    Dim foundUser As Boolean
+    Dim skipHost As Boolean
+    
+    Dim printedCount As Long
+    Dim skippedCount As Long
+    Dim notFoundCount As Long
+    
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    
+    ResetLog
+    WriteLog "Phase 2 Started"
+    
+    'Phase 1 Output sheet
+    Set wsPhase1 = ThisWorkbook.Sheets("Output")
+    
+    'Create / Clear Output Sheet
+    On Error Resume Next
+    Set wsOutput = ThisWorkbook.Sheets("Unix_Exclusion_Output")
+    On Error GoTo 0
+    
+    If wsOutput Is Nothing Then
+        Set wsOutput = ThisWorkbook.Sheets.Add
+        wsOutput.Name = "Unix_Exclusion_Output"
+    Else
+        wsOutput.Cells.Clear
+    End If
+    
+    wsOutput.Range("A1:G1").Value = Array("Business", "Server", "Username", _
+                                          "Hostname", "Count", "Login", "Logout")
+    
+    WriteLog "Opening Unix Workbook: " & unixWorkbookName
+    
+    Set wbUnix = Workbooks.Open(ThisWorkbook.Path & "\" & unixWorkbookName, ReadOnly:=True)
+    Set wsUnix = wbUnix.Sheets(unixSheetName)
+    
+    lastRow = wsPhase1.Cells(wsPhase1.Rows.Count, 1).End(xlUp).Row
+    unixLastRow = wsUnix.Cells(wsUnix.Rows.Count, 3).End(xlUp).Row
+    
+    Dim outputRow As Long
+    outputRow = 2
+    
+    For r = 2 To lastRow
+        
+        business = wsPhase1.Cells(r, 1).Value
+        server = wsPhase1.Cells(r, 2).Value
+        username = Trim(wsPhase1.Cells(r, 3).Value)
+        
+        fullHost = LCase(Trim(wsPhase1.Cells(r, 4).Value))
+        baseHost = Split(fullHost, ".")(0)
+        
+        foundUser = False
+        skipHost = False
+        
+        For uRow = 4 To unixLastRow
+            
+            If LCase(Trim(wsUnix.Cells(uRow, 3).Value)) = LCase(username) Then
+                
+                foundUser = True
+                exclusionText = LCase(wsUnix.Cells(uRow, 6).Value)
+                
+                If InStr(1, exclusionText, baseHost, vbTextCompare) > 0 Then
+                    skipHost = True
+                    skippedCount = skippedCount + 1
+                    WriteLog "Skipped (Excluded): " & username & " | " & baseHost
+                End If
+                
+                Exit For
+                
+            End If
+            
+        Next uRow
+        
+        If foundUser = False Then
+            notFoundCount = notFoundCount + 1
+            WriteLog "Username Not Found in Unix Sheet: " & username
+        End If
+        
+        If foundUser = True And skipHost = False Then
+            
+            wsOutput.Cells(outputRow, 1).Value = business
+            wsOutput.Cells(outputRow, 2).Value = server
+            wsOutput.Cells(outputRow, 3).Value = username
+            wsOutput.Cells(outputRow, 4).Value = wsPhase1.Cells(r, 4).Value
+            wsOutput.Cells(outputRow, 5).Value = wsPhase1.Cells(r, 5).Value
+            wsOutput.Cells(outputRow, 6).Value = wsPhase1.Cells(r, 6).Value
+            wsOutput.Cells(outputRow, 7).Value = wsPhase1.Cells(r, 7).Value
+            
+            printedCount = printedCount + 1
+            WriteLog "Printed: " & username & " | " & baseHost
+            
+            outputRow = outputRow + 1
+            
+        End If
+        
+    Next r
+    
+    wbUnix.Close False
+    
+    WriteLog "Phase 2 Completed"
+    WriteLog "Total Printed: " & printedCount
+    WriteLog "Total Skipped (Excluded): " & skippedCount
+    WriteLog "Total Username Not Found: " & notFoundCount
+    
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+
+End Sub
+```
+
