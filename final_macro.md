@@ -458,363 +458,7 @@ Sub WriteUnixLog(ws As Worksheet, msg As String)
 End Sub
 ```
 ---
-```vba
-Option Explicit
-
-Sub Phase2_CheckUnixExclusion()
-
-    '=============================
-    ' >>> EDIT ONLY THESE TWO <<<
-    '=============================
-    Dim unixWorkbookName As String
-    Dim unixSheetName As String
-    
-    unixWorkbookName = "UNIX.xlsx"
-    unixSheetName = "UNIX系ダイレクトログイン除外アカウント一覧"
-    '=============================
-
-    Dim wsPhase1 As Worksheet
-    Dim wsUnix As Worksheet
-    Dim wsOutput As Worksheet
-    Dim wbUnix As Workbook
-    
-    Dim lastRow As Long
-    Dim unixLastRow As Long
-    Dim r As Long, uRow As Long
-    
-    Dim business As String
-    Dim server As String
-    Dim username As String
-    Dim fullHost As String
-    Dim baseHost As String
-    Dim exclusionText As String
-    
-    Dim foundUser As Boolean
-    Dim skipHost As Boolean
-    
-    Dim printedCount As Long
-    Dim skippedCount As Long
-    Dim notFoundCount As Long
-    
-    Application.ScreenUpdating = False
-    Application.EnableEvents = False
-    
-    ResetLog
-    WriteLog "Phase 2 Started"
-    
-    'Phase 1 Output sheet
-    Set wsPhase1 = ThisWorkbook.Sheets("Output")
-    
-    'Create / Clear Output Sheet
-    On Error Resume Next
-    Set wsOutput = ThisWorkbook.Sheets("Unix_Exclusion_Output")
-    On Error GoTo 0
-    
-    If wsOutput Is Nothing Then
-        Set wsOutput = ThisWorkbook.Sheets.Add
-        wsOutput.Name = "Unix_Exclusion_Output"
-    Else
-        wsOutput.Cells.Clear
-    End If
-    
-    wsOutput.Range("A1:G1").Value = Array("Business", "Server", "Username", _
-                                          "Hostname", "Count", "Login", "Logout")
-    
-    WriteLog "Opening Unix Workbook: " & unixWorkbookName
-    
-    Set wbUnix = Workbooks.Open(ThisWorkbook.Path & "\" & unixWorkbookName, ReadOnly:=True)
-    Set wsUnix = wbUnix.Sheets(unixSheetName)
-    
-    lastRow = wsPhase1.Cells(wsPhase1.Rows.Count, 1).End(xlUp).Row
-    unixLastRow = wsUnix.Cells(wsUnix.Rows.Count, 3).End(xlUp).Row
-    
-    Dim outputRow As Long
-    outputRow = 2
-    
-    For r = 2 To lastRow
-        
-        business = wsPhase1.Cells(r, 1).Value
-        server = wsPhase1.Cells(r, 2).Value
-        username = Trim(wsPhase1.Cells(r, 3).Value)
-        
-        fullHost = LCase(Trim(wsPhase1.Cells(r, 4).Value))
-        baseHost = Split(fullHost, ".")(0)
-        
-        foundUser = False
-        skipHost = False
-        
-        For uRow = 4 To unixLastRow
-            
-            If LCase(Trim(wsUnix.Cells(uRow, 3).Value)) = LCase(username) Then
-                
-                foundUser = True
-                exclusionText = LCase(wsUnix.Cells(uRow, 6).Value)
-                
-                If InStr(1, exclusionText, baseHost, vbTextCompare) > 0 Then
-                    skipHost = True
-                    skippedCount = skippedCount + 1
-                    WriteLog "Skipped (Excluded): " & username & " | " & baseHost
-                End If
-                
-                Exit For
-                
-            End If
-            
-        Next uRow
-        
-        If foundUser = False Then
-            notFoundCount = notFoundCount + 1
-            WriteLog "Username Not Found in Unix Sheet: " & username
-        End If
-        
-        If foundUser = True And skipHost = False Then
-            
-            wsOutput.Cells(outputRow, 1).Value = business
-            wsOutput.Cells(outputRow, 2).Value = server
-            wsOutput.Cells(outputRow, 3).Value = username
-            wsOutput.Cells(outputRow, 4).Value = wsPhase1.Cells(r, 4).Value
-            wsOutput.Cells(outputRow, 5).Value = wsPhase1.Cells(r, 5).Value
-            wsOutput.Cells(outputRow, 6).Value = wsPhase1.Cells(r, 6).Value
-            wsOutput.Cells(outputRow, 7).Value = wsPhase1.Cells(r, 7).Value
-            
-            printedCount = printedCount + 1
-            WriteLog "Printed: " & username & " | " & baseHost
-            
-            outputRow = outputRow + 1
-            
-        End If
-        
-    Next r
-    
-    wbUnix.Close False
-    
-    WriteLog "Phase 2 Completed"
-    WriteLog "Total Printed: " & printedCount
-    WriteLog "Total Skipped (Excluded): " & skippedCount
-    WriteLog "Total Username Not Found: " & notFoundCount
-    
-    Application.ScreenUpdating = True
-    Application.EnableEvents = True
-
-End Sub
-```
-
-
-```vba
-Option Explicit
-
-Sub Phase2_CheckUnixExclusion()
-
-    '=============================
-    ' >>> EDIT THESE TWO VALUES <<<
-    '=============================
-    Dim unixWorkbookName As String
-    Dim unixSheetName As String
-    
-    unixWorkbookName = "UNIX.xlsm"
-    unixSheetName = "UNIX系ダイレクトログイン除外アカウント一覧"
-    '=============================
-
-    Dim wsPhase1 As Worksheet
-    Dim wsUnix As Worksheet
-    Dim wsOutput As Worksheet
-    Dim wsLog As Worksheet
-    Dim wbUnix As Workbook
-    
-    Dim lastRow As Long
-    Dim unixLastRow As Long
-    Dim r As Long, uRow As Long, checkRow As Long
-    
-    Dim business As String
-    Dim server As String
-    Dim username As String
-    
-    Dim fullHost As String
-    Dim normalizedBaseHost As String
-    Dim normalizedExHost As String
-    
-    Dim foundUser As Boolean
-    Dim skipHost As Boolean
-    Dim t1 As Date, t2 As Date
-    Dim finalLogin As Date, finalLogout As Date
-    
-    Application.ScreenUpdating = False
-    Application.EnableEvents = False
-    
-    '=============================
-    ' Prepare Log Sheet
-    '=============================
-    On Error Resume Next
-    Set wsLog = ThisWorkbook.Sheets("Unix_Exclusion_Logs")
-    On Error GoTo 0
-    
-    If wsLog Is Nothing Then
-        Set wsLog = ThisWorkbook.Sheets.Add
-        wsLog.Name = "Unix_Exclusion_Logs"
-    Else
-        wsLog.Cells.Clear
-    End If
-    
-    wsLog.Range("A1:B1").Value = Array("Timestamp", "Message")
-    WriteUnixLog wsLog, "Phase 2 Started"
-    
-    Set wsPhase1 = ThisWorkbook.Sheets("Output")
-    
-    '=============================
-    ' Prepare Output Sheet
-    '=============================
-    On Error Resume Next
-    Set wsOutput = ThisWorkbook.Sheets("Unix_Exclusion_Output")
-    On Error GoTo 0
-    
-    If wsOutput Is Nothing Then
-        Set wsOutput = ThisWorkbook.Sheets.Add
-        wsOutput.Name = "Unix_Exclusion_Output"
-    Else
-        wsOutput.Cells.Clear
-    End If
-    
-    wsOutput.Range("A1:G1").Value = Array("Business", "Server", "Username", _
-                                          "Hostname", "Count", "Login", "Logout")
-    
-    WriteUnixLog wsLog, "Opening Unix Workbook: " & unixWorkbookName
-    
-    Set wbUnix = Workbooks.Open(ThisWorkbook.Path & "\" & unixWorkbookName, ReadOnly:=True)
-    Set wsUnix = wbUnix.Sheets(unixSheetName)
-    
-    lastRow = wsPhase1.Cells(wsPhase1.Rows.Count, 1).End(xlUp).Row
-    unixLastRow = wsUnix.Cells(wsUnix.Rows.Count, 3).End(xlUp).Row
-    
-    Dim outputRow As Long
-    outputRow = 2
-    
-    '=============================
-    ' MAIN LOOP
-    '=============================
-    For r = 2 To lastRow
-        
-        business = wsPhase1.Cells(r, 1).Value
-        server = wsPhase1.Cells(r, 2).Value
-        username = Trim(wsPhase1.Cells(r, 3).Value)
-        
-        fullHost = LCase(Trim(wsPhase1.Cells(r, 4).Value))
-        
-        If InStr(fullHost, ".") > 0 Then
-            normalizedBaseHost = Split(fullHost, ".")(0)
-        Else
-            normalizedBaseHost = fullHost
-        End If
-        
-        foundUser = False
-        skipHost = False
-        
-        '---------------------------------------
-        ' Find user block in UNIX sheet
-        '---------------------------------------
-        For uRow = 4 To unixLastRow
-            
-            If LCase(Trim(wsUnix.Cells(uRow, 3).Value)) = LCase(username) Then
-                
-                foundUser = True
-                checkRow = uRow
-                
-                Do While checkRow <= unixLastRow
-                    
-                    If checkRow > uRow Then
-                        If Trim(wsUnix.Cells(checkRow, 3).Value) <> "" Then Exit Do
-                    End If
-                    
-                    normalizedExHost = LCase(Trim(wsUnix.Cells(checkRow, 6).Value))
-                    
-                    If normalizedExHost <> "" Then
-                        
-                        If InStr(normalizedExHost, ".") > 0 Then
-                            normalizedExHost = Split(normalizedExHost, ".")(0)
-                        End If
-                        
-                        If normalizedExHost = normalizedBaseHost Then
-                            skipHost = True
-                            WriteUnixLog wsLog, "User: " & username & _
-                                                 " | Host: " & normalizedBaseHost & _
-                                                 " | Status: Known Login (Excluded)"
-                            Exit Do
-                        End If
-                        
-                    End If
-                    
-                    checkRow = checkRow + 1
-                    
-                Loop
-                
-                Exit For
-                
-            End If
-            
-        Next uRow
-        
-        '---------------------------------------
-        ' If user not found in UNIX sheet
-        '---------------------------------------
-        If foundUser = False Then
-            WriteUnixLog wsLog, "User: " & username & _
-                                 " | Host: " & normalizedBaseHost & _
-                                 " | Status: User Not Found in UNIX Sheet"
-        End If
-        
-        '---------------------------------------
-        ' Print only if NOT excluded
-        '---------------------------------------
-        If foundUser = True And skipHost = False Then
-            
-            wsOutput.Cells(outputRow, 1).Value = business
-            wsOutput.Cells(outputRow, 2).Value = server
-            wsOutput.Cells(outputRow, 3).Value = username
-            wsOutput.Cells(outputRow, 4).Value = wsPhase1.Cells(r, 4).Value
-            wsOutput.Cells(outputRow, 5).Value = wsPhase1.Cells(r, 5).Value  
-            t1 = TimeValue(wsPhase1.Cells(r, 6).Value)
-            t2 = TimeValue(wsPhase1.Cells(r, 7).Value)
-            If t1 <= t2 Then
-                finalLogin = t1
-                finalLogout = t2
-            Else
-                finalLogin = t2
-                finalLogout = t1
-            End If
-            wsOutput.Cells(outputRow, 6).Value = Format(finalLogin, "hh:mm")
-            wsOutput.Cells(outputRow, 7).Value = Format(finalLogout, "hh:mm")
-            
-            WriteUnixLog wsLog, "User: " & username & _
-                                 " | Host: " & normalizedBaseHost & _
-                                 " | Status: Unknown Login (Printed)"
-            
-            outputRow = outputRow + 1
-            
-        End If
-        
-    Next r
-    
-    wbUnix.Close False
-    
-    WriteUnixLog wsLog, "Phase 2 Completed"
-    
-    Application.ScreenUpdating = True
-    Application.EnableEvents = True
-
-End Sub
-
-Sub WriteUnixLog(ws As Worksheet, msg As String)
-
-    Dim nextRow As Long
-    
-    nextRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row + 1
-    
-    ws.Cells(nextRow, 1).Value = Now
-    ws.Cells(nextRow, 2).Value = msg
-
-End Sub
-```
-
-## PHASE-3 
+# PHASE-3 
 ---
 ```vba
 Option Explicit
@@ -894,12 +538,16 @@ Sub Phase3_UpdateTracking()
         End If
         
         '========================
-        ' DR / PROD LOGIC
+        ' DR / PROD LOGIC (FIXED)
         '========================
-        If LCase(server) = "vrjpn40084" Then
+        server = LCase(Trim(server))
+        server = Replace(server, "¥", "")
+        server = Replace(server, "\", "")
+        
+        If InStr(server, "vrjpn40084") > 0 Then
             drProd = "DR"
-        ElseIf LCase(server) = "vrjpn40082" Or _
-               LCase(server) = "vrjpn40083" Then
+        ElseIf InStr(server, "vrjpn40082") > 0 Or _
+               InStr(server, "vrjpn40083") > 0 Then
             drProd = "Prod"
         Else
             drProd = ""
@@ -930,8 +578,14 @@ Sub Phase3_UpdateTracking()
         wsTarget.Cells(lastTargetRow, 10).Value = fqdn
         wsTarget.Cells(lastTargetRow, 11).Value = ipAddress
         wsTarget.Cells(lastTargetRow, 12).Value = wsOutput.Cells(r, 5).Value
+        
+        '========================
+        ' LOGIN - LOGOUT FORMAT FIXED
+        '========================
         wsTarget.Cells(lastTargetRow, 13).Value = _
-            wsOutput.Cells(r, 6).Value & " - " & wsOutput.Cells(r, 7).Value
+            Format(wsOutput.Cells(r, 6).Value, "hh:mm") & _
+            " - " & _
+            Format(wsOutput.Cells(r, 7).Value, "hh:mm")
         
         Phase3_WriteLog "Row Added with NO: " & nextNo
         
@@ -968,6 +622,7 @@ Sub Phase3_ResetLog()
     ws.Range("B1").Value = "Message"
 
 End Sub
+
 
 Sub Phase3_WriteLog(msg As String)
 
