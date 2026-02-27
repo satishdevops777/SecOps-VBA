@@ -402,7 +402,7 @@ Sub Phase2_CheckUnixExclusion()
     Dim unixSheetName As String
     
     unixWorkbookName = "UNIX.xlsm"
-    unixSheetName = "Sheet1"
+    unixSheetName = "UNIX系ダイレクトログイン除外アカウント一覧"
     '=============================
 
     Dim wsPhase1 As Worksheet
@@ -425,6 +425,8 @@ Sub Phase2_CheckUnixExclusion()
     
     Dim foundUser As Boolean
     Dim skipHost As Boolean
+    Dim t1 As Date, t2 As Date
+    Dim finalLogin As Date, finalLogout As Date
     
     Application.ScreenUpdating = False
     Application.EnableEvents = False
@@ -558,9 +560,18 @@ Sub Phase2_CheckUnixExclusion()
             wsOutput.Cells(outputRow, 2).Value = server
             wsOutput.Cells(outputRow, 3).Value = username
             wsOutput.Cells(outputRow, 4).Value = wsPhase1.Cells(r, 4).Value
-            wsOutput.Cells(outputRow, 5).Value = wsPhase1.Cells(r, 5).Value
-            wsOutput.Cells(outputRow, 6).Value = wsPhase1.Cells(r, 6).Value
-            wsOutput.Cells(outputRow, 7).Value = wsPhase1.Cells(r, 7).Value
+            wsOutput.Cells(outputRow, 5).Value = wsPhase1.Cells(r, 5).Value  
+            t1 = TimeValue(wsPhase1.Cells(r, 6).Value)
+            t2 = TimeValue(wsPhase1.Cells(r, 7).Value)
+            If t1 <= t2 Then
+                finalLogin = t1
+                finalLogout = t2
+            Else
+                finalLogin = t2
+                finalLogout = t1
+            End If
+            wsOutput.Cells(outputRow, 6).Value = Format(finalLogin, "hh:mm")
+            wsOutput.Cells(outputRow, 7).Value = Format(finalLogout, "hh:mm")
             
             WriteUnixLog wsLog, "User: " & username & _
                                  " | Host: " & normalizedBaseHost & _
@@ -593,3 +604,197 @@ Sub WriteUnixLog(ws As Worksheet, msg As String)
 End Sub
 ```
 
+## PHASE-3 
+---
+```vba
+Option Explicit
+
+Sub Phase3_UpdateTracking()
+
+    Dim targetWb As Workbook
+    Dim wsTarget As Worksheet
+    Dim wsOutput As Worksheet
+    
+    Dim targetPath As String
+    Dim targetFile As String
+    Dim targetSheet As String
+    
+    Dim lastOutputRow As Long
+    Dim lastTargetRow As Long
+    Dim nextNo As Long
+    Dim r As Long
+    
+    Dim business As String
+    Dim personInCharge As String
+    Dim buValue As String
+    Dim systemName As String
+    
+    Dim server As String
+    Dim drProd As String
+    Dim fqdn As String
+    Dim ipAddress As String
+    
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    
+    Phase3_ResetLog
+    Phase3_WriteLog "Phase 3 Process Started"
+    
+    targetFile = "20260117～発生_ダイレクトログイン発生分.xlsx"
+    targetSheet = "ダイレクトログイン_202601"
+    targetPath = ThisWorkbook.Path & "\" & targetFile
+    
+    On Error Resume Next
+    Set targetWb = Workbooks(targetFile)
+    On Error GoTo 0
+    
+    If targetWb Is Nothing Then
+        Set targetWb = Workbooks.Open(targetPath)
+        Phase3_WriteLog "Target Workbook Opened"
+    End If
+    
+    Set wsTarget = targetWb.Sheets(targetSheet)
+    Set wsOutput = ThisWorkbook.Sheets("Unix_Exclusion_Output")
+    
+    lastOutputRow = wsOutput.Cells(wsOutput.Rows.Count, 1).End(xlUp).Row
+    lastTargetRow = wsTarget.Cells(wsTarget.Rows.Count, 1).End(xlUp).Row
+    
+    nextNo = wsTarget.Cells(lastTargetRow, 1).Value + 1
+    
+    For r = 2 To lastOutputRow
+        
+        business = Trim(wsOutput.Cells(r, 1).Value)
+        server = Trim(wsOutput.Cells(r, 2).Value)
+        fqdn = Trim(wsOutput.Cells(r, 4).Value)
+        
+        Phase3_WriteLog "Processing User: " & wsOutput.Cells(r, 3).Value & _
+                        " | Host: " & fqdn
+        
+        '========================
+        ' BUSINESS MAPPING
+        '========================
+        If LCase(business) = "integratedap_01" Then
+            personInCharge = "プラギャ"
+            buValue = "GIB"
+            systemName = "Integrated AP"
+        Else
+            personInCharge = ""
+            buValue = ""
+            systemName = business
+        End If
+        
+        '========================
+        ' DR / PROD LOGIC
+        '========================
+        If LCase(server) = "vrjpn40084" Then
+            drProd = "DR"
+        ElseIf LCase(server) = "vrjpn40082" Or _
+               LCase(server) = "vrjpn40083" Then
+            drProd = "Prod"
+        Else
+            drProd = ""
+        End If
+        
+        '========================
+        ' RESOLVE IP
+        '========================
+        ipAddress = GetIPAddressFromFQDN(fqdn)
+        
+        If ipAddress = "" Then
+            Phase3_WriteLog "IP NOT FOUND for " & fqdn
+        Else
+            Phase3_WriteLog "IP Resolved: " & ipAddress
+        End If
+        
+        lastTargetRow = wsTarget.Cells(wsTarget.Rows.Count, 1).End(xlUp).Row + 1
+        
+        wsTarget.Cells(lastTargetRow, 1).Value = nextNo
+        wsTarget.Cells(lastTargetRow, 2).Value = Date - 1
+        wsTarget.Cells(lastTargetRow, 3).Value = personInCharge
+        wsTarget.Cells(lastTargetRow, 4).Value = buValue
+        wsTarget.Cells(lastTargetRow, 5).Value = systemName
+        wsTarget.Cells(lastTargetRow, 6).Value = server
+        wsTarget.Cells(lastTargetRow, 7).Value = drProd
+        wsTarget.Cells(lastTargetRow, 8).Value = "Linux"
+        wsTarget.Cells(lastTargetRow, 9).Value = wsOutput.Cells(r, 3).Value
+        wsTarget.Cells(lastTargetRow, 10).Value = fqdn
+        wsTarget.Cells(lastTargetRow, 11).Value = ipAddress
+        wsTarget.Cells(lastTargetRow, 12).Value = wsOutput.Cells(r, 5).Value
+        wsTarget.Cells(lastTargetRow, 13).Value = _
+            wsOutput.Cells(r, 6).Value & " - " & wsOutput.Cells(r, 7).Value
+        
+        Phase3_WriteLog "Row Added with NO: " & nextNo
+        
+        nextNo = nextNo + 1
+        
+    Next r
+    
+    targetWb.Save
+    Phase3_WriteLog "Workbook Saved"
+    Phase3_WriteLog "Phase 3 Completed Successfully"
+    
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+
+End Sub
+
+
+Sub Phase3_ResetLog()
+
+    Dim ws As Worksheet
+    
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Phase3_Log")
+    On Error GoTo 0
+    
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Sheets.Add
+        ws.Name = "Phase3_Log"
+    Else
+        ws.Cells.Clear
+    End If
+    
+    ws.Range("A1").Value = "Timestamp"
+    ws.Range("B1").Value = "Message"
+
+End Sub
+
+Sub Phase3_WriteLog(msg As String)
+
+    Dim ws As Worksheet
+    Dim nextRow As Long
+    
+    Set ws = ThisWorkbook.Sheets("Phase3_Log")
+    
+    nextRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row + 1
+    
+    ws.Cells(nextRow, 1).Value = Now
+    ws.Cells(nextRow, 2).Value = msg
+
+End Sub
+
+
+Function GetIPAddressFromFQDN(fqdn As String) As String
+
+    Dim shell As Object
+    Dim exec As Object
+    Dim line As String
+    
+    On Error Resume Next
+    
+    Set shell = CreateObject("WScript.Shell")
+    Set exec = shell.Exec("powershell -command ""Resolve-DnsName " & fqdn & " | Select-Object -ExpandProperty IPAddress""")
+    
+    Do While Not exec.StdOut.AtEndOfStream
+        line = exec.StdOut.ReadLine
+        If line <> "" Then
+            GetIPAddressFromFQDN = line
+            Exit Function
+        End If
+    Loop
+    
+    GetIPAddressFromFQDN = ""
+
+End Function
+
+```
