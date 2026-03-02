@@ -32,6 +32,9 @@ Sub Extract_Suspicious_Summary()
     
     Dim firstLogin As String
     Dim lastLogout As String
+
+    Dim sourcePath As String
+    Dim fileDate As String
     
     Application.ScreenUpdating = False
     Application.EnableEvents = False
@@ -42,7 +45,9 @@ Sub Extract_Suspicious_Summary()
     '=============================
     ' Open Source Workbook
     '=============================
-    sourcePath = ThisWorkbook.Path & "\IntegratedAP_01_23Unixログチェックマクロ_ver71_20260215.xlsm"
+    fileDate = Format(Date - 1, "yyyymmdd")
+    'sourcePath = ThisWorkbook.Path & "\IntegratedAP_01_23Unixログチェックマクロ_ver71_20260215.xlsm"
+    sourcePath = ThisWorkbook.Path & "\IntegratedAP_01_23Unixログチェックマクロ_ver71_" & fileDate & ".xlsm"
     
     Set wbSource = Workbooks.Open(sourcePath, ReadOnly:=True)
     Set wsSource = wbSource.Sheets("result_last")
